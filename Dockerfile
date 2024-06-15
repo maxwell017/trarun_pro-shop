@@ -1,24 +1,17 @@
-# syntax=docker/dockerfile:1
+################################################################################
+# Base image containing the minimal runtime dependencies
+FROM node:18-alpine as base
 
-ARG NODE_VERSION=16
-
-# Use node image for base image for all stages.
-FROM node:${NODE_VERSION}-alpine as base
-
-# Set working directory for all build stages.
+# Create and set the working directory.
 WORKDIR /usr/src/app
 
-# Create a stage for installing production dependecies.
+################################################################################
+# Stage for installing dependencies.
 FROM base as deps
 
-# Download dependencies as a separate step to take advantage of Docker's caching.
-# Leverage a cache mount to /root/.npm to speed up subsequent builds.
-# Leverage bind mounts to package.json and package-lock.json to avoid having to copy them
-# into this layer.
-RUN --mount=type=bind,source=package.json,target=package.json \
-    --mount=type=bind,source=package-lock.json,target=package-lock.json \
-    --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev
+# Install necessary dependencies. The "--omit=dev" flag ensures that only production dependencies are installed.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 ################################################################################
 # Create a stage for building the application.
@@ -33,6 +26,7 @@ RUN --mount=type=bind,source=package.json,target=package.json \
 
 # Copy the rest of the source files into the image.
 COPY . .
+
 # Run the build script.
 RUN npm run build
 
@@ -53,11 +47,10 @@ COPY package.json .
 # Copy the production dependencies from the deps stage and also
 # the built application from the build stage into the image.
 COPY --from=deps /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/. ./.
-
+COPY --from=build /usr/src/app/build ./build
 
 # Expose the port that the application listens on.
 EXPOSE 8081
 
 # Run the application.
-CMD npm start
+CMD ["npm", "start"]
